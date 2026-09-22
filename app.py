@@ -1,22 +1,26 @@
-"""Local dashboard: shows all churn charts and a churn-probability calculator.
+"""Local interactive dashboard: filterable churn charts + churn-probability calculator.
 
 Run:  python3 app.py   then open http://localhost:5000
 """
-from flask import Flask, render_template, request, send_from_directory
+import pandas as pd
+from flask import Flask, jsonify, render_template, request, send_from_directory
 from churn_model import predict_churn, get_levels, get_base_rate
 
 app = Flask(__name__)
 
-SECTIONS = [
-    ("Descriptive churn analysis", [
-        ("termination_reasons.png", "Termination reasons"),
-        ("churn_by_contract.png", "Churn rate by contract duration"),
-        ("churn_by_city.png", "Churn rate by city"),
-        ("churn_by_bundle.png", "Churn rate by bundle speed"),
-        ("churn_by_competitors.png", "Churn rate by competitor presence"),
-        ("tenure_hist.png", "Tenure: churned vs active"),
-        ("churn_time.png", "Churn over time and by activation cohort"),
-    ]),
+DATA = pd.read_csv("cleaned_data.csv", parse_dates=["Activation Date", "Termination Date"])
+DATA["Cohort"] = DATA["Activation Year"].astype(int).astype(str)
+DATA["District"] = DATA["Postcode"].astype(str).str.strip().str.upper().str.split().str[0]
+DATA["Contract"] = DATA["Contract Duration"].map({0: "Monthly", 12: "12-month", 24: "24-month"})
+DATA["Competitors"] = DATA["Number of Competitors"].astype(str)
+DATA["Churned"] = DATA["Churned"].astype(int)
+DATA["Term Month"] = DATA["Termination Date"].dt.to_period("M").astype(str)
+
+FILTERS = ["City", "Cohort", "Contract", "Competitors", "Bundle"]
+BUNDLE_ORDER = ["30Mb", "50Mb", "100/10Mb", "100/20Mb", "150Mb", "250Mb", "500Mb", "750Mb", "1Gb"]
+CONTRACT_ORDER = ["Monthly", "12-month", "24-month"]
+
+STATIC_CHARTS = [
     ("Statistical analysis", [
         ("stats_corr_heatmap.png", "Correlation matrix (point-biserial vs churn)"),
         ("stats_cramers_v.png", "Cramér's V — association with churn"),
@@ -30,28 +34,81 @@ SECTIONS = [
 ]
 
 
+def filter_options():
+    return {
+        "City": sorted(DATA["City"].unique()),
+        "Cohort": sorted(DATA["Cohort"].unique()),
+        "Contract": CONTRACT_ORDER,
+        "Competitors": sorted(DATA["Competitors"].unique()),
+        "Bundle": [b for b in BUNDLE_ORDER if b in set(DATA["Bundle"])],
+    }
+
+
+def apply_filters(args):
+    df = DATA
+    for f in FILTERS:
+        vals = args.getlist(f)
+        if vals:
+            df = df[df[f].isin(vals)]
+    return df
+
+
+def rate_by(df, col, order=None):
+    g = df.groupby(col)["Churned"].agg(["mean", "count"])
+    if order:
+        g = g.reindex([o for o in order if o in g.index])
+    return {"labels": [str(i) for i in g.index], "rate": [round(v * 100, 1) for v in g["mean"]],
+            "n": [int(c) for c in g["count"]]}
+
+
+@app.route("/api/summary")
+def summary():
+    df = apply_filters(request.args)
+    if df.empty:
+        return jsonify({"empty": True})
+    ch = df[df["Churned"] == 1]
+    reasons = ch["Termination Reason"].value_counts().head(8)
+    monthly = ch.groupby("Term Month").size().sort_index()
+    tenure_bins = list(range(0, 72, 3))
+    t_ch = pd.cut(ch["Tenure Months"], tenure_bins).value_counts().sort_index()
+    t_ac = pd.cut(df.loc[df["Churned"] == 0, "Tenure Months"], tenure_bins).value_counts().sort_index()
+    return jsonify({
+        "kpi": {
+            "customers": int(len(df)),
+            "churned": int(df["Churned"].sum()),
+            "churn_rate": round(df["Churned"].mean() * 100, 1),
+            "median_tenure_churned": round(float(ch["Tenure Months"].median()), 1) if len(ch) else None,
+            "share_moving": round(float((ch["Termination Reason"] == "Moving Home/Going Away").mean() * 100), 1) if len(ch) else None,
+        },
+        "by_contract": rate_by(df, "Contract", CONTRACT_ORDER),
+        "by_city": rate_by(df, "City"),
+        "by_cohort": rate_by(df, "Cohort"),
+        "by_competitors": rate_by(df, "Competitors"),
+        "by_bundle": rate_by(df, "Bundle", BUNDLE_ORDER),
+        "by_district": rate_by(df, "District"),
+        "reasons": {"labels": reasons.index.tolist(), "values": [int(v) for v in reasons.values]},
+        "monthly": {"labels": monthly.index.tolist(), "values": [int(v) for v in monthly.values]},
+        "tenure": {"labels": [f"{b}-{b + 3}" for b in tenure_bins[:-1]],
+                   "churned": [int(v) for v in t_ch.values], "active": [int(v) for v in t_ac.values]},
+    })
+
+
+@app.route("/api/predict")
+def predict():
+    a = request.args
+    p = predict_churn(a["cohort"], a["city"], a["district"], a["contract"], a["competitors"])
+    return jsonify({"probability": round(p * 100, 1)})
+
+
 @app.route("/charts/<path:name>")
 def chart(name):
     return send_from_directory("charts", name)
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
 def index():
-    levels = get_levels()
-    form = {
-        "cohort": request.form.get("cohort", levels["Cohort"][-1]),
-        "city": request.form.get("city", levels["City"][0]),
-        "district": request.form.get("district", ""),
-        "contract": request.form.get("contract", levels["Contract"][0]),
-        "competitors": request.form.get("competitors", levels["Competitors"][0]),
-    }
-    if not form["district"] or form["district"] not in levels["District by City"][form["city"]]:
-        form["district"] = levels["District by City"][form["city"]][0]
-    prob = None
-    if request.method == "POST":
-        prob = predict_churn(form["cohort"], form["city"], form["district"], form["contract"], form["competitors"])
-    return render_template("index.html", sections=SECTIONS, levels=levels, form=form, prob=prob,
-                           base_rate=get_base_rate())
+    return render_template("index.html", filters=filter_options(), levels=get_levels(),
+                           base_rate=round(get_base_rate() * 100, 1), static_charts=STATIC_CHARTS)
 
 
 if __name__ == "__main__":
