@@ -23,6 +23,7 @@
   .kpi small { display: block; font-size: 12px; opacity: .8; }
   .kpi b { font-size: 26px; }
   .chart-wrap { position: relative; height: 260px; }
+  .chart-wrap.tall { height: 520px; }
   .toolbar { display: flex; gap: 10px; align-items: center; margin-top: 12px; font-size: 13px; color: #555; }
   button { padding: 8px 16px; background: #1f4e79; color: #fff; border: 0; border-radius: 4px; font-size: 13px; cursor: pointer; }
   button.secondary { background: #e6e9ee; color: #1f4e79; }
@@ -75,7 +76,7 @@
     <div class="card"><h3>Churn rate by activation cohort (%)</h3><div class="chart-wrap"><canvas id="c_cohort"></canvas></div></div>
     <div class="card"><h3>Churn rate by competitors at location (%)</h3><div class="chart-wrap"><canvas id="c_comp"></canvas></div></div>
     <div class="card"><h3>Churn rate by bundle (%)</h3><div class="chart-wrap"><canvas id="c_bundle"></canvas></div></div>
-    <div class="card"><h3>Churn rate by postcode district (%)</h3><div class="chart-wrap"><canvas id="c_district"></canvas></div></div>
+    <div class="card"><h3>Churn rate by postcode district (%)</h3><div class="chart-wrap tall"><canvas id="c_district"></canvas></div></div>
     <div class="card"><h3>Termination reasons (churned customers)</h3><div class="chart-wrap"><canvas id="c_reasons"></canvas></div></div>
     <div class="card"><h3>Churn events per month</h3><div class="chart-wrap"><canvas id="c_monthly"></canvas></div></div>
     <div class="card"><h3>Tenure distribution (months): churned vs active</h3><div class="chart-wrap"><canvas id="c_tenure"></canvas></div></div>
@@ -113,14 +114,60 @@ const charts = {};
 Chart.defaults.font.size = 11;
 Chart.defaults.plugins.legend.display = false;
 
+// Draws two-line data labels on bars: primary (percentage) on top, secondary (record count) below.
+// Options: chart.options.plugins.barLabels = { primary: (i, ds) => string, secondary: (i, ds) => string }
+const barLabels = {
+  id: "barLabels",
+  afterDatasetsDraw(chart) {
+    const cfg = chart.config.options.plugins.barLabels; // raw config: chart.options would treat the functions as scriptables
+    if (!cfg) return;
+    const horizontal = chart.options.indexAxis === "y";
+    const { ctx, chartArea } = chart;
+    ctx.save();
+    ctx.font = "bold 11px " + Chart.defaults.font.family;
+    chart.data.datasets.forEach((ds, di) => {
+      const meta = chart.getDatasetMeta(di);
+      if (meta.hidden) return;
+      meta.data.forEach((bar, i) => {
+        const p = cfg.primary(i, ds), s = cfg.secondary(i, ds);
+        if (p == null) return;
+        if (horizontal) {
+          const inside = bar.x > chartArea.right - 60;
+          ctx.textAlign = inside ? "right" : "left";
+          ctx.fillStyle = inside ? "#fff" : "#222";
+          const x = inside ? bar.x - 4 : bar.x + 4;
+          ctx.textBaseline = "middle";
+          ctx.font = "bold 10px " + Chart.defaults.font.family; ctx.fillText(p, x, bar.y - 5);
+          ctx.font = "9px " + Chart.defaults.font.family; ctx.fillText(s, x, bar.y + 6);
+        } else {
+          const inside = bar.y < chartArea.top + 30;
+          ctx.textAlign = "center";
+          ctx.fillStyle = inside ? "#fff" : "#222";
+          const y = inside ? bar.y + 4 : bar.y - 26;
+          ctx.textBaseline = "top";
+          ctx.font = "bold 11px " + Chart.defaults.font.family; ctx.fillText(p, bar.x, y);
+          ctx.font = "10px " + Chart.defaults.font.family; ctx.fillText(s, bar.x, y + 13);
+        }
+      });
+    });
+    ctx.restore();
+  },
+};
+Chart.register(barLabels);
+const fmtN = n => "n=" + n.toLocaleString();
+
 function rateChart(id, horizontal = false) {
   return new Chart(document.getElementById(id), {
     type: "bar",
     data: { labels: [], datasets: [{ data: [], backgroundColor: BLUE }] },
     options: {
       indexAxis: horizontal ? "y" : "x", responsive: true, maintainAspectRatio: false,
+      layout: { padding: horizontal ? { right: 8 } : { top: 30 } },
       scales: { [horizontal ? "x" : "y"]: { beginAtZero: true, max: 100, title: { display: true, text: "Churn rate (%)" } } },
-      plugins: { tooltip: { callbacks: { label: c => `${c.parsed[horizontal ? "x" : "y"]}%  (n=${c.dataset.n[c.dataIndex]})` } } },
+      plugins: {
+        tooltip: { callbacks: { label: c => `${c.parsed[horizontal ? "x" : "y"]}%  (n=${c.dataset.n[c.dataIndex]})` } },
+        barLabels: { primary: (i, ds) => ds.data[i] + "%", secondary: (i, ds) => fmtN(ds.n[i]) },
+      },
     },
   });
 }
@@ -136,7 +183,9 @@ charts.bundle = rateChart("c_bundle");
 charts.district = rateChart("c_district", true);
 charts.reasons = new Chart(document.getElementById("c_reasons"), {
   type: "bar", data: { labels: [], datasets: [{ data: [], backgroundColor: BLUE }] },
-  options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, scales: { x: { beginAtZero: true } } },
+  options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, layout: { padding: { right: 8 } }, scales: { x: { beginAtZero: true, title: { display: true, text: "Churned customers" } } },
+    plugins: { barLabels: { primary: (i, ds) => ds.share[i] + "%", secondary: (i, ds) => fmtN(ds.data[i]) },
+               tooltip: { callbacks: { label: c => `${c.dataset.share[c.dataIndex]}% of churn  (n=${c.parsed.x})` } } } },
 });
 charts.monthly = new Chart(document.getElementById("c_monthly"), {
   type: "line", data: { labels: [], datasets: [{ data: [], borderColor: RED, backgroundColor: RED, pointRadius: 1.5, tension: .2 }] },
@@ -163,7 +212,9 @@ async function refresh() {
   k_moving.textContent = k.share_moving != null ? k.share_moving + "%" : "–";
   setRate(charts.contract, d.by_contract); setRate(charts.city, d.by_city); setRate(charts.cohort, d.by_cohort);
   setRate(charts.comp, d.by_competitors); setRate(charts.bundle, d.by_bundle); setRate(charts.district, d.by_district);
-  charts.reasons.data.labels = d.reasons.labels; charts.reasons.data.datasets[0].data = d.reasons.values; charts.reasons.update();
+  const total = d.reasons.values.reduce((a, b) => a + b, 0) || 1;
+  charts.reasons.data.labels = d.reasons.labels; charts.reasons.data.datasets[0].data = d.reasons.values;
+  charts.reasons.data.datasets[0].share = d.reasons.values.map(v => (v / total * 100).toFixed(1)); charts.reasons.update();
   charts.monthly.data.labels = d.monthly.labels; charts.monthly.data.datasets[0].data = d.monthly.values; charts.monthly.update();
   charts.tenure.data.labels = d.tenure.labels; charts.tenure.data.datasets[0].data = d.tenure.churned;
   charts.tenure.data.datasets[1].data = d.tenure.active; charts.tenure.update();
