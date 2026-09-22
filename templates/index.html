@@ -162,7 +162,7 @@ function rateChart(id, horizontal = false) {
     data: { labels: [], datasets: [{ data: [], backgroundColor: BLUE }] },
     options: {
       indexAxis: horizontal ? "y" : "x", responsive: true, maintainAspectRatio: false,
-      layout: { padding: horizontal ? { right: 8 } : { top: 30 } },
+      layout: { padding: horizontal ? { right: 8, top: 8 } : { top: 30 } },
       scales: { [horizontal ? "x" : "y"]: { beginAtZero: true, max: 100, title: { display: true, text: "Churn rate (%)" } } },
       plugins: {
         tooltip: { callbacks: { label: c => `${c.parsed[horizontal ? "x" : "y"]}%  (n=${c.dataset.n[c.dataIndex]})` } },
@@ -183,7 +183,7 @@ charts.bundle = rateChart("c_bundle");
 charts.district = rateChart("c_district", true);
 charts.reasons = new Chart(document.getElementById("c_reasons"), {
   type: "bar", data: { labels: [], datasets: [{ data: [], backgroundColor: BLUE }] },
-  options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, layout: { padding: { right: 8 } }, scales: { x: { beginAtZero: true, title: { display: true, text: "Churned customers" } } },
+  options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, layout: { padding: { right: 8, top: 8 } }, scales: { x: { beginAtZero: true, title: { display: true, text: "Churned customers" } } },
     plugins: { barLabels: { primary: (i, ds) => ds.share[i] + "%", secondary: (i, ds) => fmtN(ds.data[i]) },
                tooltip: { callbacks: { label: c => `${c.dataset.share[c.dataIndex]}% of churn  (n=${c.parsed.x})` } } } },
 });
@@ -219,7 +219,7 @@ async function refresh() {
   charts.tenure.data.labels = d.tenure.labels; charts.tenure.data.datasets[0].data = d.tenure.churned;
   charts.tenure.data.datasets[1].data = d.tenure.active; charts.tenure.update();
   const active = [...params.keys()].length;
-  status.textContent = active ? `${active} filter value(s) applied.` : "Unchecked group = all values. Charts update as you click.";
+  document.getElementById("status").textContent = active ? `${active} filter value(s) applied.` : "Unchecked group = all values. Charts update as you click.";
 }
 function clearFilters() {
   document.querySelectorAll("#filterForm input").forEach(i => i.checked = false); refresh();
