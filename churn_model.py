@@ -21,6 +21,11 @@ def get_levels():
     return _bundle()["levels"]
 
 
+def get_base_rate():
+    """Churn rate of the training sample."""
+    return _bundle()["base_rate"]
+
+
 def predict_churn(cohort, city, district, contract, competitors):
     """Return P(churn) for one customer profile. Contract: 'Monthly' | '12-month' | '24-month'."""
     b = _bundle()
