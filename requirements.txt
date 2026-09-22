@@ -1,0 +1,10 @@
+pandas
+openpyxl
+matplotlib
+python-pptx
+scikit-learn
+scipy
+statsmodels
+joblib
+tabulate
+flask
