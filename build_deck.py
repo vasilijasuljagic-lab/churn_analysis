@@ -1,147 +1,134 @@
-"""Builds Churn_Analysis.pptx from charts/ produced by analysis.py."""
+"""Build Churn_Analysis.pptx — 5-slide deck.
+
+Slide 1: Approach & headline findings
+Slide 2: Descriptive analysis — charts from the Excel dashboard
+Slide 3: Predictive layer — model metrics + odds ratios
+Slide 4: Prescriptive analysis — what to do about it
+Slide 5: Insights, recommendations & caveats
+"""
+import pandas as pd
+import joblib
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 
 NAVY = RGBColor(0x1F, 0x4E, 0x79)
 DARK = RGBColor(0x22, 0x22, 0x22)
+GREY = RGBColor(0x66, 0x66, 0x66)
+
+df = pd.read_csv("cleaned_data.csv")
+model = joblib.load("churn_model.joblib")
 
 prs = Presentation()
-prs.slide_width = Inches(13.333)
-prs.slide_height = Inches(7.5)
+prs.slide_width, prs.slide_height = Inches(13.33), Inches(7.5)
 BLANK = prs.slide_layouts[6]
 
 
-def slide(title, subtitle=None):
+def slide(title_text):
     s = prs.slides.add_slide(BLANK)
-    tb = s.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(12.3), Inches(0.9))
+    tb = s.shapes.add_textbox(Inches(0.5), Inches(0.25), Inches(12.3), Inches(0.7))
     p = tb.text_frame.paragraphs[0]
-    p.text = title
-    p.font.size = Pt(30); p.font.bold = True; p.font.color.rgb = NAVY
-    if subtitle:
-        st = s.shapes.add_textbox(Inches(0.5), Inches(1.05), Inches(12.3), Inches(0.5))
-        q = st.text_frame.paragraphs[0]
-        q.text = subtitle
-        q.font.size = Pt(15); q.font.color.rgb = DARK
+    p.text = title_text
+    p.font.size, p.font.bold, p.font.color.rgb = Pt(28), True, NAVY
     return s
 
 
-def bullets(s, items, left=0.6, top=1.6, width=12.1, height=5.4, size=18):
+def bullets(s, items, left=0.5, top=1.1, width=12.3, height=5.9, size=15):
     tb = s.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
-    tf = tb.text_frame; tf.word_wrap = True
-    for i, (lvl, txt, bold) in enumerate(items):
+    tf = tb.text_frame
+    tf.word_wrap = True
+    for i, (head, body) in enumerate(items):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-        p.text = txt; p.level = lvl
-        p.font.size = Pt(size - 2 * lvl); p.font.bold = bold
-        p.font.color.rgb = DARK
+        r = p.add_run(); r.text = head
+        r.font.size, r.font.bold, r.font.color.rgb = Pt(size), True, NAVY
+        if body:
+            r2 = p.add_run(); r2.text = "  —  " + body
+            r2.font.size, r2.font.color.rgb = Pt(size), DARK
         p.space_after = Pt(8)
 
 
-def img(s, path, left, top, width):
-    s.shapes.add_picture(path, Inches(left), Inches(top), width=Inches(width))
+def table(s, data, left, top, width, height, header=True, size=12):
+    rows, cols = len(data), len(data[0])
+    shape = s.shapes.add_table(rows, cols, Inches(left), Inches(top), Inches(width), Inches(height))
+    t = shape.table
+    for r, row in enumerate(data):
+        for c, val in enumerate(row):
+            cell = t.cell(r, c)
+            cell.text = str(val)
+            for p in cell.text_frame.paragraphs:
+                for run in p.runs:
+                    run.font.size = Pt(size)
+                    if header and r == 0:
+                        run.font.bold = True
+                        run.font.color.rgb = NAVY
 
 
-# 1 Title
-s = slide("Churn Analysis — UK Full-Fibre Broadband", "Case Study Data 1 · 10,000 customers · prepared with data through Sep 2025")
-tb = s.shapes.add_textbox(Inches(0.6), Inches(3.2), Inches(12), Inches(2))
-p = tb.text_frame.paragraphs[0]
-p.text = "Understanding who leaves, why they leave, and what we can do about it."
-p.font.size = Pt(20); p.font.color.rgb = DARK
+def pic(s, path, left, top, width=None, height=None):
+    s.shapes.add_picture(path, Inches(left), Inches(top),
+                         Inches(width) if width else None,
+                         Inches(height) if height else None)
 
-# 2 Data & approach
-s = slide("Data & Approach")
+
+# ---- Slide 1: approach & headlines
+s = slide("Hyperoptic churn analysis — approach & headline findings")
 bullets(s, [
-    (0, "Dataset: 10,000 customers across London, Manchester, Leeds and Nottingham", True),
-    (1, "Fields: city, postcode, bundle speed, contract duration, competitor presence, activation/termination dates and reason", False),
-    (0, "Cleaning performed", True),
-    (1, "Excel serial dates converted; termination date '-' / blank treated as still active", False),
-    (1, "Churn flag: has a termination date and a real termination reason → 6,947 churned, 3,053 active", False),
-    (1, "Tenure measured to termination (churned) or to snapshot date Sep-2025 (active)", False),
-    (0, "Overall churn rate in the base: 69.5% — unusually high, consistent with a churn-weighted sample", True),
-    (1, "All findings below compare churn rates between segments, not absolute volumes", False),
+    ("Data", "10,000 customers · activations 2020-01–2024-12 · terminations to 2025-09. Cleaning: Excel serial dates, '-' placeholders, no duplicates, no missing outside the two termination fields."),
+    ("Churn definition", "recorded termination = Termination Date present (6,947 churned, 3,053 active → 69.5% of this base)."),
+    ("Headline", "82% of terminations are 'Moving Home/Going Away' — largely structural (customer relocates off network), not dissatisfaction."),
+    ("Strongest lever", "24-month contracts churn at 42.5% vs ~75% for monthly/12-month (odds 78% lower after controls)."),
+    ("Geography", "Leeds 82.4% and Manchester 77.0% churn far above London 62.6% and Nottingham 41.4%."),
+    ("Tools", "pandas / scikit-learn / statsmodels / Chi-square & Cramér's V / logistic regression / Flask dashboard."),
 ])
 
-# 3 Headline findings
-s = slide("Headline Findings")
+# ---- Slide 2: descriptive charts
+s = slide("Descriptive analysis — where churn concentrates")
+pic(s, "charts/nb_contract_churn.png", 0.4, 1.0, width=6.2)
+pic(s, "charts/nb_city_churn.png", 6.8, 1.0, width=6.2)
+pic(s, "charts/nb_cohort_churn.png", 0.4, 4.3, width=6.2)
+pic(s, "charts/nb_bundle_churn_all.png", 6.8, 4.3, width=6.2)
+
+# ---- Slide 3: predictive layer
+s = slide("Predictive layer — logistic regression results")
+m = model["metrics"]; mn = model["metrics_no_year"]
+table(s, [
+    ["Metric", "Full model", "Without activation year"],
+    ["Accuracy", f"{m['accuracy']:.1%}", f"{mn['accuracy']:.1%}"],
+    ["Precision", f"{m['precision']:.1%}", f"{mn['precision']:.1%}"],
+    ["Recall", f"{m['recall']:.1%}", f"{mn['recall']:.1%}"],
+    ["ROC-AUC", f"{m['roc_auc']:.2f}", f"{mn['roc_auc']:.2f}"],
+], 0.5, 1.1, 5.6, 1.9)
+ors = model["odds_ratios"]
+key_terms = ["Contract Type_24 Months", "Contract Type_Monthly Rolling", "City_Manchester",
+             "City_Nottingham", "Bundle Group_50Mb", "Bundle Group_Other",
+             "Activation Year_2023", "Activation Year_2024"]
+rows = [["Term", "Odds ratio", "p"]] + [
+    [t, f"{ors.loc[t, 'Odds Ratio']:.2f}", f"{ors.loc[t, 'p-value']:.3f}"] for t in key_terms]
+table(s, rows, 6.6, 1.1, 6.2, 3.2)
 bullets(s, [
-    (0, "Moving home dominates: 82% of all terminations are 'Moving Home / Going Away' — largely uncontrollable churn", True),
-    (0, "Contract length is the strongest retention lever: 24-month contracts churn at 42.5% vs ~75% for monthly/12-month", False),
-    (0, "Geography matters: Leeds (82%) and Manchester (77%) churn far above London (63%) and Nottingham (41%)", False),
-    (0, "Entry-level 50Mb bundles churn most (82%); churn declines as speed rises — 1Gb at 66%", False),
-    (0, "Controllable churn is small: price/deal (1.3%), complaints (0.5%), bad debt (5.5%)", False),
-    (0, "Churned customers leave after a median of ~12 months — the contract-end cliff", False),
+    ("Model", "stratified 20% holdout, one-hot encoded factors; logistic regression chosen for interpretability (odds ratios)."),
+    ("Strongest signals", "contract length (24m OR 0.22 vs 12m), cohort (2024 OR 0.09 — part exposure-window effect), Manchester vs Leeds (OR 1.51), 50Mb bundle (OR 1.39)."),
+    ("Not significant", "number of competitors (p = 0.13 / 0.72) and London vs Leeds (p = 0.08) carry no signal once other factors are controlled."),
+    ("Caveat", "2023–24 cohort coefficients partly reflect shorter observation windows, not better retention — flagged by the no-year robustness model (AUC 0.64)."),
+], top=4.5, size=12)
+
+# ---- Slide 4: prescriptive analysis
+s = slide("Prescriptive analysis — what to do about it")
+bullets(s, [
+    ("1. Contract migration", "move monthly/12-month customers toward 24-month terms near renewal — the single largest controllable effect (OR 0.22). Estimated addressable churn pool: ~60% of the base."),
+    ("2. Mover's programme", "82% of churn is relocation. Offer seamless home-move transfers and partner with landlords/developers so 'Moving Home' doesn't mean leaving."),
+    ("3. Manchester & Leeds focus", "highest churn rates and sizeable populations — investigate local service quality, installation experience and altnet overbuild pressure."),
+    ("4. 50Mb entry bundle", "highest bundle churn (82%, n=1,030) — entry-tier customers may be price-sensitive or underserved; consider upgrade paths."),
+    ("5. Early-tenure guardrail", "the 0–6-month group shows 100% recorded churn — an observation-window artifact, but real early churn exists (~1,070 customers); tighten onboarding and install experience."),
 ])
 
-# 4 Reasons chart
-s = slide("Why Customers Leave", "Termination reason distribution (6,947 churned customers)")
-img(s, "charts/termination_reasons.png", 0.6, 1.5, 7.2)
+# ---- Slide 5: insights, recommendations, caveats
+s = slide("Insights, recommendations & caveats")
 bullets(s, [
-    (0, "'Moving Home/Going Away' = 82% of churn", True),
-    (1, "Fibre is address-bound: movers churn when the new home isn't served (no offnet product)", False),
-    (0, "'Customer not leaving' (521) likely admin/revoked terminations — data-quality fix", False),
-    (0, "True controllable churn (price, complaints) is only ~2%", False),
-], left=8.1, top=1.7, width=4.7, size=15)
-
-# 5 Contract + competitors
-s = slide("Contract Length & Competition", "Longer contracts retain; competitor presence shows a mild effect")
-img(s, "charts/churn_by_contract.png", 0.4, 1.6, 5.9)
-img(s, "charts/churn_by_competitors.png", 6.9, 1.6, 5.9)
-bullets(s, [
-    (0, "24-month contracts cut churn nearly in half vs monthly rolling", True),
-    (0, "Areas with 1+ competitors churn ~4pts more than uncontested areas; 2-competitor sample is tiny (n=40)", False),
-], top=6.1, height=1.2, size=14)
-
-# 6 Geography + bundle
-s = slide("Where and What: Geography & Bundle")
-img(s, "charts/churn_by_city.png", 0.4, 1.6, 5.9)
-img(s, "charts/churn_by_bundle.png", 6.9, 1.6, 6.0)
-bullets(s, [
-    (0, "Leeds & Manchester churn ~15-20pts above London — likely higher overbuild/competition and housing churn", False),
-    (0, "50Mb entry tier churns most — entry-tier customers are the most price-sensitive and mobile", False),
-], top=6.1, height=1.2, size=14)
-
-# 7 Tenure & timing
-s = slide("When Customers Leave", "Median churned tenure ~12 months — churn concentrates at contract end")
-img(s, "charts/tenure_hist.png", 0.4, 1.6, 6.0)
-img(s, "charts/churn_time.png", 6.8, 1.6, 6.2)
-bullets(s, [
-    (0, "Churn spikes around the 12-month mark — contract expiry and intro-price rollover are the trigger", False),
-    (0, "7.4% of churn happens within 3 months — early-life onboarding/installation issues", False),
-], top=6.1, height=1.2, size=14)
-
-# 8 Market context
-s = slide("UK Fibre Market Context", "External factors that amplify the findings")
-bullets(s, [
-    (0, "Altnet footprint nearly doubled: ~16m premises passed by late 2025 (~57% of UK FTTP) — overbuild keeps rising", False),
-    (0, "FTTP prices fell ~41% in real terms over 3 years — switching is cheap and heavily promoted", False),
-    (0, "House moves are the industry's largest 'uncontrollable' churn driver, worsened by Stamp-Duty-driven moves; most altnets don't sell offnet, so movers are lost at the address boundary", False),
-    (0, "Consolidation is coming (CityFibre capital raise, Netomnia/nexfibre deal) — scale players will gain wholesale reach into the mover market", False),
-    (0, "Altnets hold ~11% retail share; Hyperoptic ~1.7% — retention economics matter more than share grabs", False),
-    (1, "Sources: Intelligens Consulting (Dec 2025), 8Advisory FTTH take-up & churn (Jul 2025), Opensignal (Q2 2026), Enders Analysis Q2 2025", False),
+    ("Insight", "churn in this dataset is dominated by structural movers and contract structure — price/competition play a minor recorded role (competitors V = 0.03)."),
+    ("Recommendation 1", "deploy the model into CRM: score active customers (the Flask app already exposes per-profile churn probability) and trigger retention offers above a threshold."),
+    ("Recommendation 2", "report churn on a survival/exposure basis — raw cohort rates overstate recent-cohort improvement."),
+    ("Recommendation 3", "clarify the 'Customer not leaving' category (521 records, 7.5% of churn) — it records a termination date but ambiguous churn meaning."),
+    ("Caveat", "the dataset is churn-weighted (69.5% observed churn is not the live-business rate); model AUC 0.80 is good for ranking, probabilities need recalibration on live volumes."),
 ])
-
-# 9 Recommendations
-s = slide("Recommendations")
-bullets(s, [
-    (0, "Attack the mover market (82% of churn)", True),
-    (1, "Launch a mover's program: proactive 'we're at your new address' outreach, address-portability check, partnered install at move-in", False),
-    (1, "Pursue wholesale/offnet partnerships (e.g. CityFibre, Openreach FTTP) so movers can stay customers at non-served addresses", False),
-    (0, "Shift the base to longer contracts", True),
-    (1, "Incentivise 24-month terms (price locks, free speed upgrades) — they halve churn", False),
-    (0, "Pre-empt the 12-month cliff", True),
-    (1, "Retention offers 60-90 days before contract end; re-contract before intro pricing rolls off", False),
-    (0, "Fix early-life churn: onboarding quality checks and 90-day save-desk for new installs", False),
-    (0, "Regional playbook for Leeds/Manchester: competitive win-back offers and service-quality audits where overbuild is densest", False),
-    (0, "Data hygiene: reconcile 'Customer not leaving' records and add mover destination capture to measure recoverable churn", False),
-])
-
-# 10 Caveats
-s = slide("Caveats & Next Steps")
-bullets(s, [
-    (0, "The base is churn-weighted (69.5%) — segment rates are relative, not absolute business churn", False),
-    (0, "No pricing, usage or satisfaction fields — recommended next data pull: ARPU, monthly spend, fault tickets, NPS", False),
-    (0, "Suggested next analyses: survival/hazard modelling by cohort, mover-destination capture rate, competitor-density heatmap by postcode district", False),
-])
-
 prs.save("Churn_Analysis.pptx")
-print("saved Churn_Analysis.pptx")
+print("Saved Churn_Analysis.pptx (5 slides)")

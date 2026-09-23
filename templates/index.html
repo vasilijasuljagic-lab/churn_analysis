@@ -85,16 +85,16 @@
   <h2 id="calc">Churn calculator</h2>
   <div class="card">
     <div class="calc">
-      <div><label>Activation cohort</label><select id="p_cohort">{% for v in levels["Cohort"] %}<option>{{ v }}</option>{% endfor %}</select></div>
-      <div><label>City</label><select id="p_city" onchange="syncDistricts()">{% for v in levels["City"] %}<option>{{ v }}</option>{% endfor %}</select></div>
-      <div><label>Postcode district</label><select id="p_district"></select></div>
-      <div><label>Contract</label><select id="p_contract">{% for v in levels["Contract"] %}<option>{{ v }}</option>{% endfor %}</select></div>
-      <div><label>Competitors</label><select id="p_comp">{% for v in levels["Competitors"] %}<option>{{ v }}</option>{% endfor %}</select></div>
+      <div><label>Activation cohort</label><select id="p_cohort">{% for v in levels["Activation Year"] %}<option>{{ v }}</option>{% endfor %}</select></div>
+      <div><label>City</label><select id="p_city">{% for v in levels["City"] %}<option>{{ v }}</option>{% endfor %}</select></div>
+      <div><label>Bundle group</label><select id="p_bundle">{% for v in levels["Bundle Group"] %}<option>{{ v }}</option>{% endfor %}</select></div>
+      <div><label>Contract</label><select id="p_contract">{% for v in levels["Contract Type"] %}<option>{{ v }}</option>{% endfor %}</select></div>
+      <div><label>Competitors</label><select id="p_comp">{% for v in levels["Number of Competitors"] %}<option>{{ v }}</option>{% endfor %}</select></div>
       <div><button type="button" onclick="predict()">Calculate</button></div>
     </div>
     <div class="result" id="predResult" style="display:none">Predicted churn probability: <b id="p_val"></b>
       <div class="bar"><div id="p_bar"></div></div>
-      <div style="font-size:12px;color:#666;margin-top:6px">Sample base rate {{ base_rate }}% · gradient boosting on cohort, city, district, contract, competitors</div>
+      <div style="font-size:12px;color:#666;margin-top:6px">Sample base rate {{ base_rate }}% · logistic regression on cohort, city, bundle group, contract, competitors</div>
     </div>
   </div>
 
@@ -226,17 +226,12 @@ function clearFilters() {
 }
 document.getElementById("filterForm").addEventListener("change", refresh);
 
-const districts = {{ levels["District by City"] | tojson }};
-function syncDistricts() {
-  const sel = document.getElementById("p_district"); sel.innerHTML = "";
-  for (const d of districts[document.getElementById("p_city").value]) { const o = document.createElement("option"); o.textContent = d; sel.appendChild(o); }
-}
 async function predict() {
-  const q = new URLSearchParams({ cohort: p_cohort.value, city: p_city.value, district: p_district.value, contract: p_contract.value, competitors: p_comp.value });
+  const q = new URLSearchParams({ cohort: p_cohort.value, city: p_city.value, bundle_group: p_bundle.value, contract: p_contract.value, competitors: p_comp.value });
   const d = await (await fetch("/api/predict?" + q)).json();
   predResult.style.display = "block"; p_val.textContent = d.probability + "%"; p_bar.style.width = d.probability + "%";
 }
-syncDistricts(); refresh();
+refresh();
 </script>
 </body>
 </html>
