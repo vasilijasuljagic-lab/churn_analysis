@@ -1,6 +1,12 @@
 """Standalone Hyperoptic churn analysis — single self-contained file.
 
-USAGE
+USAGE (Jupyter notebook)
+    Put `Case_Study_Data_1.xlsx` in the same folder as your notebook, then run
+    the whole file in a cell (e.g. `%run standalone_analysis.py` or paste it).
+    If your file is still named "Case Study Data 1.xlsx" (spaces), that's fine
+    too — the loader tries both names. Or set DATA_FILE below to the full path.
+
+USAGE (terminal)
     1. Put this file next to `Case_Study_Data_1.xlsx`
     2. pip install pandas numpy matplotlib scipy statsmodels scikit-learn openpyxl
     3. python standalone_analysis.py
@@ -42,6 +48,38 @@ os.makedirs("charts", exist_ok=True)
 
 CHART_DIR = "charts"
 XLSX_OUT = "Case_Study_Data_1_analysis.xlsx"
+
+# --- data file location ------------------------------------------------------
+# Change this if your Excel file lives somewhere else, e.g.
+#   DATA_FILE = r"C:\Users\you\Downloads\Case Study Data 1.xlsx"
+#   DATA_FILE = "/home/you/Downloads/Case Study Data 1.xlsx"
+# Otherwise the loader searches the current folder (the notebook/script's
+# folder) under both names, with and without spaces.
+DATA_FILE = "Case_Study_Data_1.xlsx"
+
+
+def resolve_data_file():
+    """Find the Excel input: exact DATA_FILE first, then the spaced variant
+    'Case Study Data 1.xlsx', in the working directory and next to this script
+    (script dir is skipped in Jupyter, where __file__ doesn't exist)."""
+    names = [DATA_FILE, "Case_Study_Data_1.xlsx", "Case Study Data 1.xlsx"]
+    dirs = [os.getcwd()]
+    try:
+        dirs.append(os.path.dirname(os.path.abspath(__file__)))
+    except NameError:  # Jupyter has no __file__
+        pass
+    for d in dirs:
+        for n in names:
+            p = os.path.join(d, n)
+            if os.path.exists(p):
+                return p
+    raise FileNotFoundError(
+        f"Could not find the Excel file. Put 'Case_Study_Data_1.xlsx' in "
+        f"{os.getcwd()} (the folder Jupyter is running in), or set DATA_FILE "
+        f"at the top of standalone_analysis.py to its full path.")
+
+
+DATA_PATH = resolve_data_file()
 RED, BLUE = "darkred", "steelblue"
 
 pd.set_option("display.width", 140)
@@ -66,7 +104,7 @@ def show(title, obj):
 # is meaningful (it IS the churn flag), not missing-at-random. No duplicates were
 # found, and no numeric outliers worth removing (Number of Competitors is a
 # bounded 0-2 field; the IQR screen in the notebook flagged nothing real).
-raw = pd.read_excel("Case_Study_Data_1.xlsx", sheet_name="Case Study Data")
+raw = pd.read_excel(DATA_PATH, sheet_name="Case Study Data")
 df = raw.copy()
 # '-' is used in the export as a text placeholder where a date is missing;
 # it must be turned into real NaN BEFORE parsing dates, otherwise the
