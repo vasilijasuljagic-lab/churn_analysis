@@ -29,8 +29,14 @@ Root (everything the app needs):
 - `cleaned_data.csv`, `charts/` — dashboard data and static charts
 - `requirements.txt` — dependencies
 
-`analysis/` — analysis pipeline and deliverables (not needed to run the app):
-- `Case_Study_Data_1.xlsx` — raw input data
-- `standalone_analysis.py` — self-contained single-file analysis (run from `analysis/`; also works in Jupyter)
+`archive/` — analysis pipeline scripts (not needed to run the app):
+- `standalone_analysis.py` — self-contained single-file analysis (works in Jupyter; looks for the Excel file in its folder or the working dir)
 - `churn_prediction_analysis.py`, `analysis.py`, `stats_analysis.py`, `build_deck.py` — earlier pipeline scripts
-- `Case_Study_Data_1_analysis.xlsx`, `Churn_Analysis.pptx`, `stats_report.md` — outputs
+- `stats_report.md`, `hello.py` — earlier outputs
+
+`source_data/` — Excel files:
+- `Case_Study_Data_1.xlsx` — raw input data
+- `Case_Study_Data_1_analysis.xlsx` — Cleaned Data + Dashboard + Predictive Analytics output
+
+`presentation/`:
+- `Churn_Analysis.pptx` — 5-slide deck (descriptive charts, predictive tables, prescriptive recommendations)
