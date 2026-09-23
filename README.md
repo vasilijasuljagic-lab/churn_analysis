@@ -24,14 +24,15 @@ Open http://localhost:5000 — all charts plus a churn-probability calculator.
 
 ```bash
 python analysis.py        # cleaning, descriptive charts -> cleaned_data.csv, charts/
-python stats_analysis.py  # correlations, logistic regression, predictive model -> stats_report.md, churn_model.joblib
-python build_deck.py      # PowerPoint -> Churn_Analysis.pptx
+python stats_analysis.py  # correlations, logistic regression, predictive model -> stats_report.md
+python churn_prediction_analysis.py  # consolidated notebook pipeline -> churn_model.joblib, charts/nb_*, Case_Study_Data_1_analysis.xlsx
+python build_deck.py      # PowerPoint -> Churn_Analysis.pptx (5 slides)
 ```
 
 ## Files
 
 - `analysis.py` / `stats_analysis.py` / `build_deck.py` — analysis scripts
-- `churn_model.py` — `predict_churn(cohort, city, district, contract, competitors)` API around `churn_model.joblib`
+- `churn_model.py` — `predict_churn(cohort, city, bundle_group, contract, competitors)` API around `churn_model.joblib`
 - `app.py`, `templates/` — Flask dashboard
 - `stats_report.md` — statistical findings
 - `Churn_Analysis.pptx` — presentation

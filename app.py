@@ -96,7 +96,7 @@ def summary():
 @app.route("/api/predict")
 def predict():
     a = request.args
-    p = predict_churn(a["cohort"], a["city"], a["district"], a["contract"], a["competitors"])
+    p = predict_churn(a["cohort"], a["city"], a["bundle_group"], a["contract"], a["competitors"])
     return jsonify({"probability": round(p * 100, 1)})
 
 
@@ -108,7 +108,7 @@ def chart(name):
 @app.route("/")
 def index():
     return render_template("index.html", filters=filter_options(), levels=get_levels(),
-                           base_rate=round(get_base_rate() * 100, 1), static_charts=STATIC_CHARTS)
+                           base_rate=round(get_base_rate(), 1), static_charts=STATIC_CHARTS)
 
 
 if __name__ == "__main__":
