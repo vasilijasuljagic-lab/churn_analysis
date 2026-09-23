@@ -39,21 +39,43 @@ XLSX_OUT = "Case_Study_Data_1_analysis.xlsx"
 RED, BLUE = "darkred", "steelblue"
 
 # ---------------------------------------------------------------- load + clean
+# PART 1: DATA PREPARATION
+#
+# Load the raw customer export. The workbook has two sheets; "Case Study Data"
+# holds the 10,000 customer records, "Fields Description" is the data dictionary.
+#
+# Missingness: the only missing values are in Termination Date and Termination
+# Reason. Missing termination = the customer is still active, so the missingness
+# is meaningful (it IS the churn flag), not missing-at-random. No duplicates were
+# found, and no numeric outliers worth removing (Number of Competitors is a
+# bounded 0-2 field; the IQR screen in the notebook flagged nothing real).
 raw = pd.read_excel("Case_Study_Data_1.xlsx", sheet_name="Case Study Data")
 df = raw.copy()
+# '-' is used in the export as a text placeholder where a date is missing;
+# it must be turned into real NaN BEFORE parsing dates, otherwise the
+# serial-date conversion fails on those strings.
 for col in ["Activation Date", "Termination Date", "Termination Reason"]:
     df[col] = df[col].mask(df[col] == "-")
-df["Activation Date"] = pd.to_datetime(df["Activation Date"], unit="D", origin="1899-12-30")
-df["Termination Date"] = pd.to_datetime(df["Termination Date"], unit="D", origin="1899-12-30")
+df["Activation Date"] = pd.to_datetime(pd.to_numeric(df["Activation Date"]), unit="D", origin="1899-12-30")
+df["Termination Date"] = pd.to_datetime(pd.to_numeric(df["Termination Date"]), unit="D", origin="1899-12-30")
 
 assert (df["Termination Date"] >= df["Activation Date"]).all() or True
 bad = df[df["Termination Date"].notna() & (df["Termination Date"] < df["Activation Date"])]
 assert len(bad) == 0, "termination before activation"
 
 df["Churn Flag"] = df["Termination Date"].notna().astype(int)
+
+# Latest observed date in the dataset. For non-churned customers we measure
+# tenure as of the end of the observation period; for churned customers it is
+# simply Termination Date - Activation Date.
 observation_date = df[["Activation Date", "Termination Date"]].max().max()
 df["Customer Tenure Days"] = (df["Termination Date"].fillna(observation_date) - df["Activation Date"]).dt.days
 df["Customer Tenure Months"] = (df["Customer Tenure Days"] / 30.44).round(1)
+# Tenure bands used in the descriptive layer. Note: the shortest bands
+# (0-3, 3-6 months) show 100% recorded churn — this is partly a construction
+# artifact: a still-active customer cannot yet appear in a short band, so the
+# bands only contain customers who terminated that early. The ~1,070 real
+# early churners are still worth an onboarding look.
 df["Tenure Band"] = pd.cut(
     df["Customer Tenure Months"],
     bins=[-1, 3, 6, 12, 24, 36, 48, float("inf")],
@@ -62,11 +84,14 @@ df["Tenure Band"] = pd.cut(
 )
 df["Download Mbps"] = df["Bundle"].str.extract(r"^(\d+(?:\.\d+)?)")[0].astype(float)
 df.loc[df["Bundle"].str.endswith("Gb"), "Download Mbps"] *= 1000
+# New categorical columns: map numeric Contract Duration to a readable label,
+# and band the 0-2 Number of Competitors field.
 df["Contract Type"] = df["Contract Duration"].map({0: "Monthly Rolling", 12: "12 Months", 24: "24 Months"})
 df["Competitor Band"] = df["Number of Competitors"].map({0: "No Competitors", 1: "1 Competitor", 2: "2 Competitors"})
 df["Activation Year"] = df["Activation Date"].dt.year
 
 # keep columns compatible with the app + add new engineered ones
+# (the Flask dashboard and earlier charts were built on these names)
 df["Churned"] = df["Churn Flag"]
 df["Tenure Months"] = df["Customer Tenure Months"]
 df["Term YearMonth"] = df["Termination Date"].dt.to_period("M").astype(str).replace("NaT", np.nan)
@@ -77,6 +102,12 @@ print(f"Rows: {len(df)}  Churned: {df['Churn Flag'].sum()}  Overall churn: {chur
 print(f"Observation date: {observation_date.date()}")
 
 # ------------------------------------------------- descriptive tables + charts
+# PART 2: DESCRIPTIVE ANALYTICS — what happened, and where churn concentrates.
+#
+# One helper produces every churn table the same way: Total / Churned /
+# Active / Churn_Rate / Share_of_Total_Churn per group. observed=True keeps
+# the groupby to categories actually present (the default observed=False
+# pads results with empty category combinations).
 def churn_table(by):
     t = df.groupby(by, observed=True).agg(Total_Customers=("CustomerID", "count"),
                            Churned_Customers=("Churn Flag", "sum"))
@@ -86,6 +117,9 @@ def churn_table(by):
     return t.sort_values("Churn_Rate", ascending=False).round(2)
 
 
+# One helper produces every bar chart the same way, matching the notebook's
+# style: highest-churn bar in red, others steelblue, and a data label on each
+# bar with the churn percentage on top and the customer count (n) below.
 def labeled_bars(data, x, y, n, title, fname, horizontal=False, ylim=100):
     fig, ax = plt.subplots(figsize=(8, 5))
     colors = [RED if v == data[y].max() else BLUE for v in data[y]]
@@ -105,6 +139,11 @@ def labeled_bars(data, x, y, n, title, fname, horizontal=False, ylim=100):
     plt.close(fig)
 
 
+# CHURN TABLES
+# 1. By contract type — 24-month customers churn substantially less than
+#    12-month / monthly rolling. Tenure also differs: 24-month customers have
+#    roughly twice the median observed tenure, so part of the gap is contract
+#    mechanics (still in-contract), not only satisfaction.
 contract_churn = churn_table("Contract Type")
 city_churn = churn_table("City")
 competitor_churn = churn_table("Competitor Band")
@@ -114,6 +153,14 @@ reason_analysis = (
     .rename("Churned_Customers").sort_values(ascending=False).to_frame()
 )
 reason_analysis["Share_of_Churn"] = (reason_analysis["Churned_Customers"] / reason_analysis["Churned_Customers"].sum() * 100).round(2)
+
+# Note on the "Customer not leaving" termination reason (521 records, 7.5% of
+# churn): it appears among rows our flag treats as churned, so recorded
+# termination is not necessarily customer-initiated churn. Its tenure,
+# contract, competitor, city and bundle distributions closely match the
+# overall churned population — there is no evidence it is driven by
+# competition, geography or bundle. The records are kept, but the category's
+# business meaning stays ambiguous.
 
 labeled_bars(contract_churn.reset_index(), "Contract Type", "Churn_Rate", "Total_Customers",
              "Churn Rate by Contract Type", "nb_contract_churn.png")
@@ -149,6 +196,12 @@ same_day = df[df["Termination Date"].notna() & (df["Termination Date"] == df["Ac
 print(f"Same-day activation+termination: {len(same_day)}")
 
 # ------------------------------------------------------------- statistics
+# STATISTICAL LAYER — are the group differences real, or noise?
+#
+# For categorical factor vs binary churn we use the chi-square test of
+# independence plus Cramer's V for effect size (0-1: how strong the
+# association is, not just whether it is significant — with n=10,000 almost
+# everything is "significant", so V is the meaningful number).
 def cramers_v(col):
     t = pd.crosstab(df[col], df["Churn Flag"])
     chi2, p, dof, _ = chi2_contingency(t)
@@ -162,10 +215,18 @@ for col in ["City", "Contract Type", "Competitor Band", "Bundle"]:
     stat_rows.append({"Factor": col, "Chi2": round(chi2, 1), "p_value": p, "dof": dof, "Cramers_V": round(v, 3)})
     print(f"{col}: chi2={chi2:.1f} p={p:.2e} V={v:.3f}")
 stats_table = pd.DataFrame(stat_rows)
+# Spearman (rank) correlation tenure vs churn — monotone association, robust
+# to the skewed tenure distribution. Negative rho = longer tenure, less churn.
 rho, p_rho = spearmanr(df["Customer Tenure Months"], df["Churn Flag"])
 print(f"Spearman tenure×churn: rho={rho:.3f} p={p_rho:.2e}")
 
 # --------------------------------------------------------------- model data
+# PART 3: PREDICTIVE ANALYTICS — can we predict which customers will churn?
+#
+# Feature set: contract type, city, bundle group, number of competitors,
+# activation year (cohort). Bundle is collapsed to the four major bundles
+# plus "Other" — the niche bundles have single-digit row counts and would
+# only add noise as model features.
 MAJOR_BUNDLES = ["50Mb", "150Mb", "500Mb", "1Gb"]
 model_data = df[["Churn Flag", "Contract Type", "City", "Bundle",
                  "Number of Competitors", "Activation Year"]].copy()
@@ -175,6 +236,10 @@ model_data = model_data.drop(columns=["Bundle"])
 FEATURES = ["Contract Type", "City", "Bundle Group", "Number of Competitors", "Activation Year"]
 
 # --- statsmodels logit (inference: odds ratios), dummies with drop_first
+# First the inferential view: a logistic regression on dummy variables
+# (drop_first gives each factor a reference level). The odds ratio per level
+# is the interpretable output — e.g. 0.22 for 24 Months means ~78% lower odds
+# of churn vs the 12-month reference, all else equal.
 X_sm = pd.get_dummies(model_data[FEATURES].astype(str), drop_first=True, dtype=int)
 X_sm = sm.add_constant(X_sm)
 logit = sm.Logit(model_data["Churn Flag"], X_sm).fit(disp=0)
@@ -187,6 +252,10 @@ odds_ratio_table = pd.DataFrame({
 print(odds_ratio_table)
 
 # --- sklearn pipeline (predictive: stratified holdout)
+# Then the predictive view: the same factors through a scikit-learn pipeline
+# (one-hot encode -> logistic regression), evaluated on a held-out 20% of
+# customers stratified by churn. OneHotEncoder(handle_unknown="ignore") keeps
+# the pipeline safe on unseen categories at predict time.
 X, y = model_data[FEATURES], model_data["Churn Flag"]
 Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.20, random_state=42, stratify=y)
 pipe = Pipeline([
@@ -202,6 +271,10 @@ metrics = {"accuracy": accuracy_score(yte, yp), "precision": precision_score(yte
 print({k: round(v, 3) for k, v in metrics.items()})
 
 # --- robustness: model without Activation Year
+# Activation Year dominates partly for a mechanical reason: recent cohorts
+# have had less time to be observed churning (exposure window), not just
+# better retention. Re-running without it (AUC ~0.64 vs ~0.80) shows how much
+# of the model's apparent skill is that artifact.
 FEATURES_NY = [f for f in FEATURES if f != "Activation Year"]
 Xtr2, Xte2, ytr2, yte2 = train_test_split(
     model_data[FEATURES_NY], y, test_size=0.20, random_state=42, stratify=y)
@@ -217,6 +290,10 @@ metrics_ny = {"accuracy": accuracy_score(yte2, yp2), "precision": precision_scor
 print({k: round(v, 3) for k, v in metrics_ny.items()})
 
 # --------------------------------------------- saved model for the dashboard
+# Persist everything the Flask app and the deck need: the pipeline refit on
+# ALL data (holdout was only for honest evaluation), the feature order, the
+# valid levels for each factor (drives the app's dropdowns), the base rate,
+# both metric sets, the odds-ratio table and the test-set confusion matrix.
 levels = {
     "Contract Type": sorted(model_data["Contract Type"].unique()),
     "City": sorted(model_data["City"].unique()),
@@ -238,7 +315,8 @@ joblib.dump({
 print("Saved churn_model.joblib")
 
 # ---------------------------------------------------- Excel: Dashboard+Predict
-from openpyxl.utils.dataframe import dataframe_to_rows
+# PART 4: OUTPUTS — mirror the notebook's Excel dashboard and add a
+# Predictive Analytics sheet holding the most important tables.
 
 xl_charts = [
     ("nb_contract_churn.png", "B7"), ("nb_competitor_churn.png", "J7"),
@@ -259,6 +337,8 @@ for fname, cell in xl_charts:
 
 wp = wb.create_sheet("Predictive Analytics")
 
+# Helper: write a titled dataframe block (header row + rows) at start_row and
+# return the next free row, so tables stack down the sheet.
 def write_table(ws, df_out, start_row, title, index_name=None):
     ws.cell(row=start_row, column=1, value=title)
     r = start_row + 1
@@ -293,3 +373,28 @@ r = write_table(wp, tenure_churn, r, "CHURN BY TENURE BAND", index_name="Tenure 
 r = write_table(wp, reason_analysis, r, "TERMINATION REASONS (churned only)", index_name="Termination Reason")
 wb.save(XLSX_OUT)
 print(f"Saved {XLSX_OUT}")
+
+# ---------------------------------------------------------------------------
+# PART 5: PRESCRIPTIVE ANALYTICS — what to do about it.
+# (The numbers above feed the recommendations in Churn_Analysis.pptx, slides
+# 4-5. Summary of the logic:)
+#
+#   finding                                        -> action
+#   24-month OR 0.22 vs monthly                    -> push contract migration
+#                                                     at renewal (largest
+#                                                     controllable lever)
+#   82% of terminations = Moving Home/Going Away   -> mover's programme +
+#                                                     landlord/developer
+#                                                     partnerships
+#   Leeds 82% / Manchester 77% churn               -> investigate local service
+#                                                     quality + altnet
+#                                                     overbuild pressure
+#   50Mb bundle churns 82% (n=1,030)               -> entry-tier upgrade path
+#   competitors not significant (p 0.13/0.72)      -> retention spend on
+#                                                     contract + movers, not
+#                                                     price matching
+#   cohort effect mostly exposure window           -> report churn on a
+#                                                     survival basis; don't
+#                                                     read 2024's 37% as
+#                                                     improvement
+# ---------------------------------------------------------------------------
