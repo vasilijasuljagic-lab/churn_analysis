@@ -28,8 +28,17 @@ Part 5 prescriptive summary.
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use("Agg")  # headless: save PNGs without opening windows
 import matplotlib.pyplot as plt
+
+# In Jupyter the default (inline) backend shows each chart right after its
+# step; as a plain script we use the headless Agg backend so figures save to
+# PNG without needing a display. plt.show() below is a no-op under Agg.
+try:
+    get_ipython  # type: ignore[name-defined]
+    IN_JUPYTER = True
+except NameError:
+    matplotlib.use("Agg")
+    IN_JUPYTER = False
 from scipy.stats import chi2_contingency, spearmanr
 import statsmodels.api as sm
 from sklearn.compose import ColumnTransformer
@@ -192,6 +201,7 @@ def labeled_bars(data, x, y, n, title, fname, horizontal=False, ylim=100):
     ax.set_title(title)
     fig.tight_layout()
     fig.savefig(f"{CHART_DIR}/{fname}", dpi=200, bbox_inches="tight")
+    plt.show()  # displays inline in Jupyter; no-op in a script
     plt.close(fig)
 
 
@@ -243,14 +253,14 @@ monthly_churn = df.dropna(subset=["Termination Date"]).set_index("Termination Da
 fig, ax = plt.subplots(figsize=(12, 5))
 ax.plot(monthly_churn.index, monthly_churn.values, marker="o")
 ax.set_title("Recorded Churn Events per Month"); ax.set_xlabel("Month"); ax.set_ylabel("Churn Events")
-fig.tight_layout(); fig.savefig(f"{CHART_DIR}/nb_monthly_churn.png", dpi=200); plt.close(fig)
+fig.tight_layout(); fig.savefig(f"{CHART_DIR}/nb_monthly_churn.png", dpi=200); plt.show(); plt.close(fig)
 
 fig, ax = plt.subplots(figsize=(10, 6))
 for subset, color, label in [(1, "red", "Churned"), (0, "gray", "Active")]:
     ax.hist(df.loc[df["Churn Flag"] == subset, "Customer Tenure Months"],
             bins=30, density=True, alpha=0.5, color=color, label=label)
 ax.set_title("Customer Tenure Distribution: Active vs Churned"); ax.legend()
-fig.tight_layout(); fig.savefig(f"{CHART_DIR}/nb_tenure_hist.png", dpi=200); plt.close(fig)
+fig.tight_layout(); fig.savefig(f"{CHART_DIR}/nb_tenure_hist.png", dpi=200); plt.show(); plt.close(fig)
 
 # ------------------------------------------------------------- statistics
 # STATISTICAL LAYER — are the group differences real, or noise?
