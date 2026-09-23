@@ -1,6 +1,6 @@
 # Churn Analysis
 
-Churn analysis of the customer workbook in `archive/` (UK full-fibre broadband, 10,000 customers).
+Churn analysis of the customer workbook in `analysis/` (UK full-fibre broadband, 10,000 customers).
 
 ## Setup
 
@@ -29,8 +29,8 @@ Root (everything the app needs):
 - `cleaned_data.csv`, `charts/` — dashboard data and static charts
 - `requirements.txt` — dependencies
 
-`archive/` — analysis pipeline and deliverables (not needed to run the app):
+`analysis/` — analysis pipeline and deliverables (not needed to run the app):
 - `Case_Study_Data_1.xlsx` — raw input data
-- `standalone_analysis.py` — self-contained single-file analysis (run from `archive/`; also works in Jupyter)
+- `standalone_analysis.py` — self-contained single-file analysis (run from `analysis/`; also works in Jupyter)
 - `churn_prediction_analysis.py`, `analysis.py`, `stats_analysis.py`, `build_deck.py` — earlier pipeline scripts
 - `Case_Study_Data_1_analysis.xlsx`, `Churn_Analysis.pptx`, `stats_report.md` — outputs
