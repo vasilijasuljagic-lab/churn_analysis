@@ -74,7 +74,8 @@ def resolve_data_file():
     names = [DATA_FILE, "Case_Study_Data_1.xlsx", "Case Study Data 1.xlsx"]
     dirs = [os.getcwd()]
     try:
-        dirs.append(os.path.dirname(os.path.abspath(__file__)))
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        dirs += [script_dir, os.path.join(os.path.dirname(script_dir), "source_data")]
     except NameError:  # Jupyter has no __file__
         pass
     for d in dirs:
