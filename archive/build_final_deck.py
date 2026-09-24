@@ -126,13 +126,23 @@ bullets(s, [
 # --------------------------------------------- 5. Market context + recommendations
 s = slide("UK fibre market context & recommendations")
 bullets(s, [
-    ("Altnet overbuild", "UK altnets (incl. Hyperoptic) often overbuilt the same dense postcodes — when a mover's new address sits on another network, churn is automatic, not competitive loss. This matches our data: mover-dominated reasons + competitors not significant."),
-    ("Price pressure & consolidation", "wholesale FTTP prices fell ~40% in real terms; altnets are consolidating — retaining existing customers beats the market's rising acquisition costs."),
+    ("Altnet overbuild", "47% of the UK now has more than one FTTP network (Cartesian); altnets report overbuild by other altnets as a sharply rising challenge (INCA). When a mover's new address sits on another network, churn is automatic, not competitive loss — matching our data: mover-dominated reasons + competitors not significant."),
+    ("Price pressure & consolidation", "entry-level altnet FTTP prices fell £22 → £19 (2020–25), well below BT's £35 (INCA); Cartesian calls pricing 'very aggressive' and consolidation needed for economies of scale — retaining customers beats rising acquisition costs."),
     ("1. Contract migration", "move monthly/12-month customers to 24-month terms at renewal (OR 0.22 — biggest controllable effect)."),
     ("2. Mover's programme", "seamless home-move transfers + landlord/developer partnerships for the 82% who relocate."),
     ("3. Manchester & Leeds review", "local service quality, install experience, overbuild pressure."),
     ("4. Entry-tier upgrade path", "50Mb churns most (82%) — nudge toward higher tiers; deploy the model in CRM to score active customers; report churn on a survival basis."),
-], size=13)
+], top=1.0, height=5.6, size=12)
+
+# sources footnote (small, bottom of slide)
+tb = s.shapes.add_textbox(Inches(0.5), Inches(6.75), Inches(12.4), Inches(0.7))
+tf = tb.text_frame; tf.word_wrap = True
+p = tf.paragraphs[0]
+p.text = ("Sources: Cartesian, 'The State of UK Fibre' (2025) — cartesian.com/state-of-uk-fibre · "
+          "INCA & Point Topic, 'State of the Altnets' annual report — inca.coop · "
+          "Ofcom, Telecoms Access Review / copper switchover proposals · "
+          "Internal dataset: Case_Study_Data_1.xlsx (10,000 customers).")
+p.font.size, p.font.color.rgb = Pt(9), RGBColor(0x80, 0x80, 0x80)
 
 prs.save("presentation/Churn_Analysis_Final.pptx")
 print("Saved presentation/Churn_Analysis_Final.pptx")
